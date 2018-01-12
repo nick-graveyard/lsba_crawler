@@ -9,47 +9,108 @@ const nightmare = Nightmare({
 });
 const START = 'https://www.lsba.org/Public/MembershipDirectory.aspx';
 const MAX_PAGE = 5;
-const WAIT_TIME = 8000;
+const WAIT_TIME = 500;
 
 co(function*() {
 
-    yield nightmare
-      .goto(START)
-      .type('#TextBoxCity', 'New Orleans')
-      .click("#ButtonSearch")
-      .wait(WAIT_TIME)
+  yield nightmare
+    .goto(START)
+    .type('#TextBoxCity', 'New Orleans')
+    .click("#ButtonSearch")
+    .wait(WAIT_TIME)
 
-    next_exists = yield nextPageExists();
-    current_page = 0;
+  next_exists = yield nextPageExists();
+  current_page = 1;
 
-    while (next_exists) {
-
+  while (next_exists) {
+    try {
       // Get all the person ids for the page
       person_ids = yield getPersonIds();
 
       // cycle thru all person id's
       for (let i = 0; i < person_ids.length; i++) {
-        var element = person_ids[i];
-        yield nightmare.click("#" + element).wait(WAIT_TIME);
-        var person_info = yield getPersonInfo();
-        person_info = convertToCsv(person_info);
-        fs.appendFileSync('./lsba.csv', person_info);
-        yield nightmare.click("#Button1").wait(WAIT_TIME);
+        try {
+
+          var element = person_ids[i];
+          console.log("Page:" + current_page + " Element:" + element);
+
+
+          var x = true;
+          while (x) {
+            try {
+              yield nightmare.click("#" + element)
+                .wait(WAIT_TIME)
+              x = yield nightmare.exists("#" + element);
+            } catch (error) {
+              console.error("Failed clicking element button: " + error.stack);
+              x = yield nightmare.exists("#Button1");
+              if (x) {
+                yield nightmare.click("#Button1")
+                  .wait(WAIT_TIME);
+              }
+              yield sleep(WAIT_TIME);
+            }
+          }
+
+          var person_info = yield getPersonInfo()
+          person_info = convertToCsv(person_info);
+          fs.appendFileSync('./lsba.csv', person_info);
+
+          var x = true;
+          while (x) {
+            try {
+              yield nightmare.click("#Button1")
+                .wait(WAIT_TIME);
+              x = yield nightmare.exists("#Button1");
+            } catch (error) {
+              console.error("Failed clicking back button: " + error.stack);
+              x = yield nightmare.exists("#" + element);
+              if (x) {
+                yield nightmare.click("#" + element)
+                  .wait(WAIT_TIME);
+              }
+              yield sleep(WAIT_TIME);
+            }
+          }
+
+        } catch (error) {
+          console.log("General Error: " + error.stack);
+          yield sleep(WAIT_TIME);
+          i = i - 1;
+          continue;
+        }
       }
 
-      yield nightmare.click('input[name="DataPager1$ctl00$ctl01"]').wait(WAIT_TIME);
-      // Check if next page exists
-      next_exists = yield nextPageExists();
-    }
+      var x = true;
+      while (x) {
+        try {
+          yield nightmare.click('input[name="DataPager1$ctl00$ctl01"]').wait(WAIT_TIME)
+          next_exists = yield nextPageExists();
+        } catch (error) {
+          console.log("Next Page error: " + error.stack);
+          yield sleep(WAIT_TIME);
+          continue;
+        }
+        current_page = current_page + 1;
+        x = false;
+      }
 
-  })
-  .catch(onerror)
+    } catch (error) {
+      console.log("Outer loop Error:" + error.stack);
+      continue;
+    }
+  }
+
+})
 
 
 function nextPageButtonExists() {
   return nightmare.visible('input[name="DataPager1$ctl00$ctl01"]');
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function nextPageExists() {
   return nightmare.evaluate(() => {
@@ -112,7 +173,7 @@ function getCSVHeaders() {
     parish,
     status_actions
   `;
-  headers = headers.split(',').map(element => element.replace(/(\r\n|\n|\r)/gm,"").trim() );
+  headers = headers.split(',').map(element => element.replace(/(\r\n|\n|\r)/gm, "").trim());
   return headers;
 }
 
@@ -134,7 +195,7 @@ function convertToCsv(json_in_string) {
     ${data["parish"]};
     ${data["status_actions"]}
 `;
-  person_info = person_info.split(';').map(element => element.replace(/(\r\n|\n|\r)/gm,"").replace(";", "").trim() );
+  person_info = person_info.split(';').map(element => element.replace(/(\r\n|\n|\r)/gm, "").replace(";", "").trim());
   return person_info.join(";") + "\n";
 }
 
