@@ -5,7 +5,7 @@ const nightmare = Nightmare({
   openDevTools: {
     mode: 'detach'
   },
-  show: true
+  show: false
 });
 const START = 'https://www.lsba.org/Public/MembershipDirectory.aspx';
 const MAX_PAGE = 5;
