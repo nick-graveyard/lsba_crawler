@@ -2,14 +2,15 @@ var fs = require('fs');
 var co = require('co');
 const Nightmare = require('nightmare');
 const nightmare = Nightmare({
+  executionTimeout: 3000,
   openDevTools: {
     mode: 'detach'
   },
-  show: false
+  show: true
 });
 const START = 'https://www.lsba.org/Public/MembershipDirectory.aspx';
-const MAX_PAGE = 5;
-const WAIT_TIME = 500;
+//const MAX_PAGE = 5;
+const WAIT_TIME = 100;
 
 co(function*() {
 
@@ -19,90 +20,81 @@ co(function*() {
     .click("#ButtonSearch")
     .wait(WAIT_TIME)
 
+  yield sleep(2000);
   next_exists = yield nextPageExists();
-  current_page = 1;
+  current_page = 0;
 
   while (next_exists) {
+    // Get all the person ids for the page
+    yield sleep(2000);
+    person_ids = yield getPersonIds();
+    current_page = current_page + 1;
+
+    // cycle thru all person id's
+    for (let i = 0; i < person_ids.length; i++) {
+
+      var element = person_ids[i];
+      console.log("Page:" + current_page + " Element:" + element);
+
+      console.log("Click on element button");
+      try {
+        yield nightmare
+          .wait("#" + element)
+          .click("#" + element)
+      } catch (error) {
+        console.log("Failed clicking on person info: " + error.stack);
+        throw error;
+      }
+
+      console.log("Obtaining Person Details");
+      yield nightmare.wait("#divdetails")
+      try {
+        var person_info = yield getPersonInfo()
+      } catch (error) {
+        console.error("Failed finding person info: " + error.stack);
+        throw error;
+      }
+
+      console.log("Storing Person Details in file");
+      try {
+        person_info = convertToCsv(person_info);
+        fs.appendFileSync('./lsba.csv', person_info);
+      } catch (e) {
+        console.error("Failed writing person info: " + error.stack);
+        throw error;
+      }
+
+      console.log("Click the back button");
+      try {
+        yield nightmare
+          .wait("#Button1")
+          .click("#Button1")
+      } catch (error) {
+        console.error("Failed clicking back button: " + error.stack);
+        throw error;
+      }
+    } // end for loop
+
+    console.log("Click the next page button");
     try {
-      // Get all the person ids for the page
-      person_ids = yield getPersonIds();
-
-      // cycle thru all person id's
-      for (let i = 0; i < person_ids.length; i++) {
-        try {
-
-          var element = person_ids[i];
-          console.log("Page:" + current_page + " Element:" + element);
-
-
-          var x = true;
-          while (x) {
-            try {
-              yield nightmare.click("#" + element)
-                .wait(WAIT_TIME)
-              x = yield nightmare.exists("#" + element);
-            } catch (error) {
-              console.error("Failed clicking element button: " + error.stack);
-              x = yield nightmare.exists("#Button1");
-              if (x) {
-                yield nightmare.click("#Button1")
-                  .wait(WAIT_TIME);
-              }
-              yield sleep(WAIT_TIME);
-            }
-          }
-
-          var person_info = yield getPersonInfo()
-          person_info = convertToCsv(person_info);
-          fs.appendFileSync('./lsba.csv', person_info);
-
-          var x = true;
-          while (x) {
-            try {
-              yield nightmare.click("#Button1")
-                .wait(WAIT_TIME);
-              x = yield nightmare.exists("#Button1");
-            } catch (error) {
-              console.error("Failed clicking back button: " + error.stack);
-              x = yield nightmare.exists("#" + element);
-              if (x) {
-                yield nightmare.click("#" + element)
-                  .wait(WAIT_TIME);
-              }
-              yield sleep(WAIT_TIME);
-            }
-          }
-
-        } catch (error) {
-          console.log("General Error: " + error.stack);
-          yield sleep(WAIT_TIME);
-          i = i - 1;
-          continue;
-        }
-      }
-
-      var x = true;
-      while (x) {
-        try {
-          yield nightmare.click('input[name="DataPager1$ctl00$ctl01"]').wait(WAIT_TIME)
-          next_exists = yield nextPageExists();
-        } catch (error) {
-          console.log("Next Page error: " + error.stack);
-          yield sleep(WAIT_TIME);
-          continue;
-        }
-        current_page = current_page + 1;
-        x = false;
-      }
-
+      yield nightmare
+        .wait('input[name="DataPager1$ctl00$ctl01"]')
+        .click('input[name="DataPager1$ctl00$ctl01"]')
     } catch (error) {
-      console.log("Outer loop Error:" + error.stack);
-      continue;
+      console.error("Failed clicking on Next Page: " + error.stack);
+      throw error;
     }
-  }
 
-})
-
+    console.log("Testing if there are next pages");
+    try {
+      yield nightmare.wait('input[name="DataPager1$ctl00$ctl01"]')
+      next_exists = yield nextPageExists();
+    } catch (error) {
+      console.error("Failed clicking on Next Page: " + error.stack);
+      throw error;
+    }
+  } // end while loop
+}).catch(onerror);
 
 function nextPageButtonExists() {
   return nightmare.visible('input[name="DataPager1$ctl00$ctl01"]');
