@@ -16,7 +16,7 @@ co(function*() {
 
   yield nightmare
     .goto(START)
-    .type('#TextBoxCity', 'New Orleans')
+    .type('#TextBoxCity', 'Covington')
     .click("#ButtonSearch")
     .wait(WAIT_TIME)
 
@@ -43,7 +43,7 @@ co(function*() {
           .click("#" + element)
       } catch (error) {
         console.log("Failed clicking on person info: " + error.stack);
-        throw error;
+        continue;
       }
 
       console.log("Obtaining Person Details");
@@ -52,7 +52,7 @@ co(function*() {
         var person_info = yield getPersonInfo()
       } catch (error) {
         console.error("Failed finding person info: " + error.stack);
-        throw error;
+        continue;
       }
 
       console.log("Storing Person Details in file");
@@ -61,7 +61,7 @@ co(function*() {
         fs.appendFileSync('./lsba.csv', person_info);
       } catch (e) {
         console.error("Failed writing person info: " + error.stack);
-        throw error;
+        continue;
       }
 
       console.log("Click the back button");
