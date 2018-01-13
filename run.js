@@ -43,21 +43,16 @@ co(function*() {
             .click("#" + element)
         } catch (error) {
           console.log("Failed clicking on person info: " + error.stack);
-          continue;
+          throw "Error";
         }
 
         console.log("Obtaining Person Details");
-        yield nightmare.wait("#divdetails")
         try {
+          yield nightmare.wait("#divdetails")
           var person_info = yield getPersonInfo()
         } catch (error) {
           console.error("Failed finding person info: " + error.stack);
-
-          yield nightmare
-            .wait("#Button1")
-            .click("#Button1")
-
-          continue;
+          throw "Error";
         }
 
         console.log("Storing Person Details in file");
@@ -65,8 +60,7 @@ co(function*() {
           person_info = convertToCsv(person_info);
           fs.appendFileSync('./lsba.csv', person_info);
         } catch (e) {
-          console.error("Failed writing person info: " + error.stack);
-          continue;
+          throw "Error";
         }
 
         console.log("Click the back button");
