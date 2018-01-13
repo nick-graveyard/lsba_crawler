@@ -26,7 +26,7 @@ co(function*() {
   next_exists = yield nextPageExists();
   current_page = 0;
 
-  while (next_exists) {
+  while(next_exists) {
     // Get all the person ids for the page
     yield sleep(2000);
     person_ids = yield getPersonIds();
@@ -115,7 +115,8 @@ co(function*() {
       show: true
     });
 
-
+    yield nightmare.wait(10000)
+    
     yield nightmare
       .goto(START)
       .type('#TextBoxCity', city)
@@ -124,6 +125,22 @@ co(function*() {
 
     goToPage(current_page);
 
+
+    yield nightmare.wait(10000);
+    console.log("Testing if there are next pages");
+    try {
+      yield nightmare.wait('input[name="DataPager1$ctl00$ctl01"]')
+      next_exists = yield nextPageExists();
+
+      if(!next_exists){
+        console.log("Testing if there are next pages");
+        break;
+      }
+
+    } catch (error) {
+      console.error("Failed clicking on Next Page: " + error.stack);
+      throw error;
+    }
 
     // beginning of next page logic inside outer loop
     console.log("Click the next page button");
@@ -136,15 +153,6 @@ co(function*() {
       throw error;
     }
 
-    yield nightmare.wait(10000);
-    console.log("Testing if there are next pages");
-    try {
-      yield nightmare.wait('input[name="DataPager1$ctl00$ctl01"]')
-      next_exists = yield nextPageExists();
-    } catch (error) {
-      console.error("Failed clicking on Next Page: " + error.stack);
-      throw error;
-    }
 
     current_page = current_page + 1;
   } // end while loop
