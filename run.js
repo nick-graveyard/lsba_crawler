@@ -3,6 +3,7 @@ var co = require('co');
 const Nightmare = require('nightmare');
 nightmare = Nightmare({
   executionTimeout: 20000,
+  waitTimeout: 20000,
   openDevTools: {
     mode: 'detach'
   },
@@ -43,7 +44,7 @@ co(function*() {
             .click("#" + element)
         } catch (error) {
           console.log("Failed clicking on person info: " + error.stack);
-          throw "Error";
+          throw error;
         }
 
         console.log("Obtaining Person Details");
@@ -52,7 +53,7 @@ co(function*() {
           var person_info = yield getPersonInfo()
         } catch (error) {
           console.error("Failed finding person info: " + error.stack);
-          throw "Error";
+          throw error;
         }
 
         console.log("Storing Person Details in file");
@@ -60,7 +61,7 @@ co(function*() {
           person_info = convertToCsv(person_info);
           fs.appendFileSync('./lsba.csv', person_info);
         } catch (e) {
-          throw "Error";
+          throw e;
         }
 
         console.log("Click the back button");
@@ -78,29 +79,52 @@ co(function*() {
       } //end try
       catch (e) {
 
-        yield nightmare.end()
+        yield nightmare.end();
 
         nightmare = Nightmare({
           executionTimeout: 20000,
+          waitTimeout: 20000,
           openDevTools: {
             mode: 'detach'
           },
           show: true
         });
 
-        yield nightmare.wait(20000)
-
         yield nightmare
           .goto(START)
           .type('#TextBoxCity', city)
           .click("#ButtonSearch")
-        yield nightmare.wait(10000)
+
+        yield nightmare.wait(3000)
 
         goToPage(current_page);
 
         continue;
       } //end catch
     } // end for loop
+
+
+    yield nightmare.end();
+
+    nightmare = Nightmare({
+      executionTimeout: 20000,
+      waitTimeout: 20000,
+      openDevTools: {
+        mode: 'detach'
+      },
+      show: true
+    });
+
+
+    yield nightmare
+      .goto(START)
+      .type('#TextBoxCity', city)
+      .click("#ButtonSearch")
+    yield nightmare.wait(3000)
+
+    goToPage(current_page);
+
+
     // beginning of next page logic inside outer loop
     console.log("Click the next page button");
     try {
@@ -112,6 +136,7 @@ co(function*() {
       throw error;
     }
 
+    yield nightmare.wait(10000);
     console.log("Testing if there are next pages");
     try {
       yield nightmare.wait('input[name="DataPager1$ctl00$ctl01"]')
