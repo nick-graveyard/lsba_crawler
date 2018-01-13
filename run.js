@@ -116,7 +116,7 @@ co(function*() {
     });
 
     yield nightmare.wait(10000)
-    
+
     yield nightmare
       .goto(START)
       .type('#TextBoxCity', city)
