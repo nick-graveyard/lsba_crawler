@@ -8,7 +8,7 @@ const WAIT_TIME = 1000; // Dont'go less than 1000 due to web async issues
 const city = args[0];
 const filename = city.toLowerCase() + ".csv"
 
-current_page = 12;
+current_page = 0;
 
 co(function*() {
   while (true) {
