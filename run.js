@@ -1,23 +1,24 @@
 var fs = require('fs');
 var co = require('co');
 var nightmare;
+const args = process.argv.slice(2); // normalize arguments
 const Nightmare = require('nightmare');
 const START = 'https://www.lsba.org/Public/MembershipDirectory.aspx';
-//const MAX_PAGE = 5;
-const WAIT_TIME = 1000;
-const city = 'Covington';
+const WAIT_TIME = 1000; // Dont'go less than 1000 due to web async issues
+const city = args[0];
+const filename = city.toLowerCase() + ".csv"
 
-current_page = 0;
-
+current_page = 12;
 
 co(function*() {
-
   while (true) {
     console.log("New Page:" + current_page)
     yield newNightmare();
     yield goToCityList();
     yield goToPage(current_page);
+    console.log("Getting person Ids");
     person_ids = yield getPersonIds();
+    console.log(person_ids);
 
     // cycle thru all person id's
     for (let i = 0; i < person_ids.length; i++) {
@@ -31,6 +32,17 @@ co(function*() {
         yield clickBackButton();
       } catch (error) {
         console.log("Error encountered, retrying. " + error);
+
+        // Catch a wierd async error between travelling to next page
+        // and getting the element id's.
+        // Happens on the last page of the search.
+        element_exists = yield nightmare.exists("#".element);
+        if (!element_exists) {
+          console.log("Element doesn't exist. Ending person loop early.");
+          break;
+        }
+
+        // Normal error handling
         yield endNightmare();
         yield newNightmare();
         yield goToCityList();
@@ -40,8 +52,11 @@ co(function*() {
     }
 
     console.log('Checking next page existence.')
+
     next_exists = yield nextPageExists();
     if (!next_exists) {
+      console.log("Finished processing city.");
+      yield endNightmare();
       break;
     }
 
@@ -52,6 +67,15 @@ co(function*() {
 }).catch(onerror);
 
 
+
+// Functions
+function waitforunload() {
+  return new Promise(function(resolve, reject) {
+    window.onbeforeunload = function() {
+      resolve();
+    };
+  });
+};
 
 function clickBackButton() {
   return co(function*() {
@@ -72,8 +96,9 @@ function savePersonToFileSync(person_info) {
   console.log("Storing Person Details in file");
   try {
     person_info = convertToCsv(person_info);
-    fs.appendFileSync('./lsba.csv', person_info);
+    fs.appendFileSync('./' + filename, person_info);
   } catch (error) {
+    console.log('Failed storing person details in file.')
     throw error;
   }
 }
@@ -152,6 +177,8 @@ function nextPage() {
   })
 }
 
+// The last .wait is a hack. Need to be able to determine when a page is transitioned in an SPA
+// This might require comparing two evaluates.
 function goToPage(pagenumber) {
   return co(function*() {
     for (let page = 0; page < pagenumber; page++) {
@@ -159,6 +186,7 @@ function goToPage(pagenumber) {
         .wait(WAIT_TIME)
         .wait('input[name="DataPager1$ctl00$ctl01"]')
         .click('input[name="DataPager1$ctl00$ctl01"]')
+        .wait(WAIT_TIME) // Note figure out how determine a page transition on an SPA.
     }
   })
 }
@@ -195,14 +223,13 @@ function nextPageExists() {
 
 function getPersonIds() {
   return co(function*() {
-    var ids = yield nightmare.evaluate(() => {
+    return yield nightmare.evaluate(() => {
       var links = Array.from(document.querySelectorAll("a[id*='LinkButton']"));
       var callback = element => element.innerText == 'View Details';
       var result = links.filter(callback);
       var ids = result.map(e => e.id);
       return ids;
     });
-    return ids;
   });
 }
 
