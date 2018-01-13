@@ -1,34 +1,22 @@
 var fs = require('fs');
 var co = require('co');
+var nightmare;
 const Nightmare = require('nightmare');
-nightmare = Nightmare({
-  executionTimeout: 20000,
-  waitTimeout: 20000,
-  openDevTools: {
-    mode: 'detach'
-  },
-  show: true
-});
 const START = 'https://www.lsba.org/Public/MembershipDirectory.aspx';
 //const MAX_PAGE = 5;
-const WAIT_TIME = 100;
+const WAIT_TIME = 1000;
 const city = 'Covington';
+
+current_page = 0;
+
 
 co(function*() {
 
-  yield nightmare
-    .goto(START)
-    .type('#TextBoxCity', city)
-    .click("#ButtonSearch")
-
-
-  yield sleep(2000);
-  next_exists = yield nextPageExists();
-  current_page = 0;
-
-  while(next_exists) {
-    // Get all the person ids for the page
-    yield sleep(2000);
+  while (true) {
+    console.log("New Page:" + current_page)
+    yield newNightmare();
+    yield goToCityList();
+    yield goToPage(current_page);
     person_ids = yield getPersonIds();
 
     // cycle thru all person id's
@@ -36,76 +24,97 @@ co(function*() {
       try {
         var element = person_ids[i];
         console.log("Page:" + current_page + " Element:" + element);
+        yield clickOnElement(element);
+        person_info = yield getPersonInfo();
+        console.log(person_info);
+        savePersonToFileSync(person_info);
+        yield clickBackButton();
+      } catch (error) {
+        console.log("Error encountered, retrying. " + error);
+        yield endNightmare();
+        yield newNightmare();
+        yield goToCityList();
+        yield goToPage(current_page);
+        i = i - 1; // retry last element
+      }
+    }
 
-        console.log("Click on element button");
-        try {
-          yield nightmare
-            .wait("#" + element)
-            .click("#" + element)
-        } catch (error) {
-          console.log("Failed clicking on person info: " + error.stack);
-          throw error;
-        }
+    console.log('Checking next page existence.')
+    next_exists = yield nextPageExists();
+    if (!next_exists) {
+      break;
+    }
 
-        console.log("Obtaining Person Details");
-        try {
-          yield nightmare.wait("#divdetails")
-          var person_info = yield getPersonInfo()
-        } catch (error) {
-          console.error("Failed finding person info: " + error.stack);
-          throw error;
-        }
-
-        console.log("Storing Person Details in file");
-        try {
-          person_info = convertToCsv(person_info);
-          fs.appendFileSync('./lsba.csv', person_info);
-        } catch (e) {
-          throw e;
-        }
-
-        console.log("Click the back button");
-        try {
-          yield nightmare
-            .wait("#Button1")
-            .click("#Button1")
-        } catch (error) {
-          console.error("Failed clicking back button: " + error.stack);
-          throw error;
-        }
+    console.log('Ending nightmare.')
+    yield endNightmare();
+    current_page = current_page + 1;
+  }
+}).catch(onerror);
 
 
 
-      } //end try
-      catch (e) {
+function clickBackButton() {
+  return co(function*() {
+    console.log("Click the back button");
+    try {
+      yield nightmare
+        .wait(WAIT_TIME)
+        .wait("#Button1")
+        .click("#Button1")
+    } catch (error) {
+      console.error("Failed clicking back button: " + error.stack);
+      throw error;
+    }
+  });
+}
 
-        yield nightmare.end();
+function savePersonToFileSync(person_info) {
+  console.log("Storing Person Details in file");
+  try {
+    person_info = convertToCsv(person_info);
+    fs.appendFileSync('./lsba.csv', person_info);
+  } catch (error) {
+    throw error;
+  }
+}
 
-        nightmare = Nightmare({
-          executionTimeout: 20000,
-          waitTimeout: 20000,
-          openDevTools: {
-            mode: 'detach'
-          },
-          show: true
-        });
+function clickOnElement(element) {
+  return co(function*() {
+    console.log("Click on element button: " + element);
+    try {
+      yield nightmare
+        .wait(WAIT_TIME)
+        .wait("#" + element)
+        .click("#" + element)
+    } catch (error) {
+      console.log("Failed clicking on person info: " + error.stack);
+      throw error;
+    }
+  });
+}
 
-        yield nightmare
-          .goto(START)
-          .type('#TextBoxCity', city)
-          .click("#ButtonSearch")
+function getPersonDetails() {
+  return co(function*() {
+    console.log("Obtaining Person Details");
+    try {
 
-        yield nightmare.wait(3000)
+      // Navigate
+      yield nightmare
+        .wait(WAIT_TIME)
+        .wait("#divdetails")
 
-        goToPage(current_page);
+      // Get the info
+      return getPersonInfo();
 
-        continue;
-      } //end catch
-    } // end for loop
+    } catch (error) {
+      console.error("Failed finding person info: " + error.stack);
+      throw error;
+    }
+  });
+}
 
-
-    yield nightmare.end();
-
+function newNightmare() {
+  return co(function*() {
     nightmare = Nightmare({
       executionTimeout: 20000,
       waitTimeout: 20000,
@@ -114,55 +123,40 @@ co(function*() {
       },
       show: true
     });
+  });
+}
 
-    yield nightmare.wait(10000)
-
+function goToCityList() {
+  return co(function*() {
     yield nightmare
+      .wait(WAIT_TIME)
       .goto(START)
       .type('#TextBoxCity', city)
       .click("#ButtonSearch")
-    yield nightmare.wait(3000)
+      .wait(WAIT_TIME)
+  });
+}
 
-    goToPage(current_page);
+function endNightmare() {
+  return co(function*() {
+    yield nightmare.end();
+  });
+}
 
-
-    yield nightmare.wait(10000);
-    console.log("Testing if there are next pages");
-    try {
-      yield nightmare.wait('input[name="DataPager1$ctl00$ctl01"]')
-      next_exists = yield nextPageExists();
-
-      if(!next_exists){
-        console.log("Testing if there are next pages");
-        break;
-      }
-
-    } catch (error) {
-      console.error("Failed clicking on Next Page: " + error.stack);
-      throw error;
-    }
-
-    // beginning of next page logic inside outer loop
-    console.log("Click the next page button");
-    try {
-      yield nightmare
-        .wait('input[name="DataPager1$ctl00$ctl01"]')
-        .click('input[name="DataPager1$ctl00$ctl01"]')
-    } catch (error) {
-      console.error("Failed clicking on Next Page: " + error.stack);
-      throw error;
-    }
-
-
-    current_page = current_page + 1;
-  } // end while loop
-}).catch(onerror);
-
+function nextPage() {
+  return co(function*() {
+    yield nightmare
+      .wait(WAIT_TIME)
+      .wait('input[name="DataPager1$ctl00$ctl01"]')
+      .click('input[name="DataPager1$ctl00$ctl01"]')
+  })
+}
 
 function goToPage(pagenumber) {
-  co(function*() {
-    for (let i = 0; i < pagenumber; i++) {
+  return co(function*() {
+    for (let page = 0; page < pagenumber; page++) {
       yield nightmare
+        .wait(WAIT_TIME)
         .wait('input[name="DataPager1$ctl00$ctl01"]')
         .click('input[name="DataPager1$ctl00$ctl01"]')
     }
@@ -170,7 +164,9 @@ function goToPage(pagenumber) {
 }
 
 function nextPageButtonExists() {
-  return nightmare.visible('input[name="DataPager1$ctl00$ctl01"]');
+  return co(function*() {
+    return yield nightmare.visible('input[name="DataPager1$ctl00$ctl01"]');
+  });
 }
 
 function sleep(ms) {
@@ -178,46 +174,85 @@ function sleep(ms) {
 }
 
 function nextPageExists() {
-  return nightmare.evaluate(() => {
-    var x = document.getElementsByName('DataPager1$ctl00$ctl01')[0].getAttribute('disabled');
-    if (x == 'disabled') {
-      return false;
+  return co(function*() {
+    try {
+      return yield nightmare
+        .wait(WAIT_TIME)
+        .wait('input[name="DataPager1$ctl00$ctl01"]')
+        .evaluate(() => {
+          var x = document.getElementsByName('DataPager1$ctl00$ctl01')[0].getAttribute('disabled');
+          if (x == 'disabled') {
+            return false;
+          }
+          return true;
+        });
+    } catch (error) {
+      console.error("Failed clicking on Next Page: " + error.stack);
+      throw error;
     }
-    return true;
   });
 }
 
 function getPersonIds() {
-  return nightmare.evaluate(() => {
-    var links = Array.from(document.querySelectorAll("a[id*='LinkButton']"));
-    var callback = element => element.innerText == 'View Details';
-    var result = links.filter(callback);
-    var ids = result.map(e => e.id);
+  return co(function*() {
+    var ids = yield nightmare.evaluate(() => {
+      var links = Array.from(document.querySelectorAll("a[id*='LinkButton']"));
+      var callback = element => element.innerText == 'View Details';
+      var result = links.filter(callback);
+      var ids = result.map(e => e.id);
+      return ids;
+    });
     return ids;
   });
 }
 
 function getPersonInfo(element) {
-  return nightmare.evaluate(() => {
-    var details = document.querySelectorAll("#divdetails")[0].innerText.split("\n");
-    var out = {
-      "full_name": details[0],
-      "date_admitted": details[1].replace('Date Admitted:', '').trim(),
-      "is_eligible": details[2].trim(),
-      "addy1": details[4].trim(),
-      "addy2": details[5].trim(),
-      "phone": details[6].replace('Phone:', '').trim(),
-      "fax": details[7].replace('Fax:', '').trim(),
-      "email": details[8].replace('Email:', '').trim(),
-      "web_site": details[9].replace('Web Site:', '').trim(),
-      "firm": details[10].replace('Firm:', '').trim(),
-      "board_district": details[11].replace('Board District:', '').trim(),
-      "judicial_district": details[12].replace('Judicial District:', '').trim(),
-      "parish": details[13].replace('Parish:', '').trim(),
-      "status_actions": document.querySelectorAll("#divreasons")[0].innerText.replace('Open Status Actions:', '').replace('\n', "|")
-    };
+  return co(function*() {
+    return yield nightmare
+      .wait('#divdetails')
+      .evaluate(() => {
+        var details = document.querySelectorAll("#divdetails")[0].innerText.split("\n");
 
-    return JSON.stringify(out);
+        var is_private = details.includes('Private Member');
+
+        if (is_private) {
+          var out = {
+            "full_name": details[0],
+            "date_admitted": details[1].replace('Date Admitted:', '').trim(),
+            "is_eligible": details[2].trim(),
+            "addy1": "private",
+            "addy2": "private",
+            "phone": "private",
+            "fax": "private",
+            "email": "private",
+            "web_site": "private",
+            "firm": "private",
+            "board_district": "private",
+            "judicial_district": "private",
+            "parish": "private",
+            "status_actions": document.querySelectorAll("#divreasons")[0].innerText.replace('Open Status Actions:', '').replace('\n', "|")
+          };
+          return JSON.stringify(out);
+        }
+
+        var out = {
+          "full_name": details[0],
+          "date_admitted": details[1].replace('Date Admitted:', '').trim(),
+          "is_eligible": details[2].trim(),
+          "addy1": details[4].trim(),
+          "addy2": details[5].trim(),
+          "phone": details[6].replace('Phone:', '').trim(),
+          "fax": details[7].replace('Fax:', '').trim(),
+          "email": details[8].replace('Email:', '').trim(),
+          "web_site": details[9].replace('Web Site:', '').trim(),
+          "firm": details[10].replace('Firm:', '').trim(),
+          "board_district": details[11].replace('Board District:', '').trim(),
+          "judicial_district": details[12].replace('Judicial District:', '').trim(),
+          "parish": details[13].replace('Parish:', '').trim(),
+          "status_actions": document.querySelectorAll("#divreasons")[0].innerText.replace('Open Status Actions:', '').replace('\n', "|")
+        };
+        return JSON.stringify(out);
+      });
   });
 }
 
