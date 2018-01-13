@@ -6,7 +6,7 @@ const Nightmare = require('nightmare');
 const START = 'https://www.lsba.org/Public/MembershipDirectory.aspx';
 const WAIT_TIME = 1000; // Dont'go less than 1000 due to web async issues
 const city = args[0];
-const filename = city.toLowerCase() + ".csv"
+const filename = city.toLowerCase().replace(" " , "-") + ".csv"
 
 current_page = 0;
 
