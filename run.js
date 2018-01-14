@@ -6,63 +6,61 @@ const Nightmare = require('nightmare');
 const START = 'https://www.lsba.org/Public/MembershipDirectory.aspx';
 const WAIT_TIME = 1000; // Dont'go less than 1000 due to web async issues
 const city = args[0];
-const filename = city.toLowerCase().replace(" " , "-") + ".csv"
+const filename = city.toLowerCase().replace(" ", "-") + ".csv"
 
 current_page = 0;
 
+// Transient errors are a bitch in crawlers
+error_count = 0;
+max_error_count = 20;
+
 co(function*() {
   while (true) {
-    console.log("New Page:" + current_page)
-    yield newNightmare();
-    yield goToCityList();
-    yield goToPage(current_page);
-    console.log("Getting person Ids");
-    person_ids = yield getPersonIds();
-    console.log(person_ids);
+    try {
+      console.log("Page:" + current_page)
+      yield newNightmare();
+      yield goToCityList();
+      yield goToPage(current_page);
+      console.log("Getting person Ids");
+      person_ids = yield getPersonIds();
+      console.log(person_ids);
 
-    // cycle thru all person id's
-    for (let i = 0; i < person_ids.length; i++) {
-      try {
-        var element = person_ids[i];
-        console.log("Page:" + current_page + " Element:" + element);
-        yield clickOnElement(element);
-        person_info = yield getPersonInfo();
-        console.log(person_info);
-        savePersonToFileSync(person_info);
-        yield clickBackButton();
-      } catch (error) {
-        console.log("Error encountered, retrying. " + error);
-
-        // Catch a wierd async error between travelling to next page
-        // and getting the element id's.
-        // Happens on the last page of the search.
-        element_exists = yield nightmare.exists("#".element);
-        if (!element_exists) {
-          console.log("Element doesn't exist. Ending person loop early.");
-          break;
+      // cycle thru all person id's
+      for (let i = 0; i < person_ids.length; i++) {
+        try {
+          var element = person_ids[i];
+          console.log("Page:" + current_page + " Element:" + element);
+          yield clickOnElement(element);
+          person_info = yield getPersonInfo();
+          console.log(person_info);
+          savePersonToFileSync(person_info);
+          yield clickBackButton();
+        } catch (error) {
+          console.log("Error in inner loop." + error.stack);
+          throw error;
         }
-
-        // Normal error handling
-        yield endNightmare();
-        yield newNightmare();
-        yield goToCityList();
-        yield goToPage(current_page);
-        i = i - 1; // retry last element
       }
+
+      console.log('Checking next page existence.')
+
+      next_exists = yield nextPageExists();
+      if (!next_exists) {
+        console.log("Finished processing city.");
+        yield endNightmare();
+        break;
+      }
+      console.log('Ending nightmare.')
+      current_page = current_page + 1;
+      error_count = 0;
     }
+  } catch (error) {
 
-    console.log('Checking next page existence.')
-
-    next_exists = yield nextPageExists();
-    if (!next_exists) {
-      console.log("Finished processing city.");
-      yield endNightmare();
-      break;
+    // Room for general unspecified transient errors
+    if (error_count == max_error_count) {
+      throw error;
     }
-
-    console.log('Ending nightmare.')
-    yield endNightmare();
-    current_page = current_page + 1;
+    error_count = error_count + 1;
+    continue;
   }
 }).catch(onerror);
 
@@ -82,6 +80,7 @@ function clickBackButton() {
     console.log("Click the back button");
     try {
       yield nightmare
+        .refresh()
         .wait(WAIT_TIME)
         .wait("#Button1")
         .click("#Button1")
@@ -108,6 +107,7 @@ function clickOnElement(element) {
     console.log("Click on element button: " + element);
     try {
       yield nightmare
+        .refresh()
         .wait(WAIT_TIME)
         .wait("#" + element)
         .click("#" + element)
@@ -140,6 +140,9 @@ function getPersonDetails() {
 
 function newNightmare() {
   return co(function*() {
+
+    yield endNightmare();
+
     nightmare = Nightmare({
       executionTimeout: 20000,
       waitTimeout: 20000,
@@ -164,7 +167,10 @@ function goToCityList() {
 
 function endNightmare() {
   return co(function*() {
-    yield nightmare.end();
+    if (nightmare != null) {
+      yield nightmare.end();
+      nightmare = null;
+    }
   });
 }
 
@@ -187,6 +193,7 @@ function goToPage(pagenumber) {
         .wait('input[name="DataPager1$ctl00$ctl01"]')
         .click('input[name="DataPager1$ctl00$ctl01"]')
         .wait(WAIT_TIME) // Note figure out how determine a page transition on an SPA.
+        .wait('input[name="DataPager1$ctl00$ctl01"]')
     }
   })
 }
@@ -223,13 +230,26 @@ function nextPageExists() {
 
 function getPersonIds() {
   return co(function*() {
-    return yield nightmare.evaluate(() => {
-      var links = Array.from(document.querySelectorAll("a[id*='LinkButton']"));
-      var callback = element => element.innerText == 'View Details';
-      var result = links.filter(callback);
-      var ids = result.map(e => e.id);
+    try {
+      var ids = yield nightmare
+        .wait("a[id*='LinkButton']")
+        .evaluate(() => {
+          var links = Array.from(document.querySelectorAll("a[id*='LinkButton']"));
+          var callback = element => element.innerText == 'View Details';
+          var result = links.filter(callback);
+          var ids = result.map(e => e.id);
+          return ids;
+        });
+
+      if (ids == null) {
+        throw "Error";
+      }
       return ids;
-    });
+
+    } catch (error) {
+      console.error("Failed Getting person_ids" + error.stack);
+      throw error;
+    }
   });
 }
 
