@@ -52,15 +52,15 @@ co(function*() {
       console.log('Ending nightmare.')
       current_page = current_page + 1;
       error_count = 0;
-    }
-  } catch (error) {
+    } catch (error) {
 
-    // Room for general unspecified transient errors
-    if (error_count == max_error_count) {
-      throw error;
+      // Room for general unspecified transient errors
+      if (error_count == max_error_count) {
+        throw error;
+      }
+      error_count = error_count + 1;
+      continue;
     }
-    error_count = error_count + 1;
-    continue;
   }
 }).catch(onerror);
 
@@ -80,7 +80,6 @@ function clickBackButton() {
     console.log("Click the back button");
     try {
       yield nightmare
-        .refresh()
         .wait(WAIT_TIME)
         .wait("#Button1")
         .click("#Button1")
@@ -107,7 +106,6 @@ function clickOnElement(element) {
     console.log("Click on element button: " + element);
     try {
       yield nightmare
-        .refresh()
         .wait(WAIT_TIME)
         .wait("#" + element)
         .click("#" + element)
