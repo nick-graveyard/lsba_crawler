@@ -10,7 +10,7 @@ const filename = city.toLowerCase().replace(" ", "-") + ".csv"
 
 current_page = 0;
 
-// Transient errors are a bitch in crawlers
+// Transient errors are a PITA in crawlers
 error_count = 0;
 max_error_count = 20;
 
